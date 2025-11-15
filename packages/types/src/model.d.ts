@@ -30,3 +30,10 @@ export type ModelMetadata = {
   flags: FeatureFlags;
   displayName: string;
 };
+
+export type ModelContextWindowSize = {
+  /** Maximum context window size in tokens */
+  maxTokens: number;
+  /** Notes about special conditions or beta features */
+  notes?: string;
+};

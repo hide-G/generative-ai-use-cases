@@ -29,6 +29,7 @@ import FeedbackForm from './FeedbackForm';
 import Textarea from './Textarea';
 import useFiles from '../hooks/useFiles';
 import { useTranslation } from 'react-i18next';
+import { getContextWindowUsagePercentage } from '@generative-ai-use-cases/common';
 
 type Props = BaseProps & {
   idx?: number;
@@ -186,7 +187,7 @@ const ChatMessage: React.FC<Props> = (props) => {
                   <summary className="text-sm" onClick={toggleOpenTrace}>
                     <div className="inline-flex gap-1">
                       {t('common.trace')}
-                      {props.loading && (
+                      {props.loading && !chatContent?.content && (
                         <div className="border-aws-sky size-5 animate-spin rounded-full border-4 border-t-transparent"></div>
                       )}
                     </div>
@@ -277,18 +278,42 @@ const ChatMessage: React.FC<Props> = (props) => {
                     {chatContent.metadata.usage.inputTokens}
                     <PiArrowDown title="Output tokens" />
                     {chatContent.metadata.usage.outputTokens}
-                    {chatContent.metadata.usage.cacheWriteInputTokens ? (
+                    {chatContent.metadata.usage.cacheWriteInputTokens && (
                       <>
                         <PiCloudArrowUp title="Cache write input tokens" />
                         {chatContent.metadata.usage.cacheWriteInputTokens}
                       </>
-                    ) : null}
-                    {chatContent.metadata.usage.cacheReadInputTokens ? (
+                    )}
+                    {chatContent.metadata.usage.cacheReadInputTokens && (
                       <>
                         <PiCloudArrowDown title="Cache read input tokens" />
                         {chatContent.metadata.usage.cacheReadInputTokens}
                       </>
-                    ) : null}
+                    )}
+                    {(() => {
+                      const usagePercentage = getContextWindowUsagePercentage(
+                        chatContent.llmType || '',
+                        chatContent.metadata.usage.totalTokens
+                      );
+                      if (usagePercentage !== null) {
+                        const isWarning = usagePercentage >= 80;
+                        const isCritical = usagePercentage >= 90;
+                        return (
+                          <span
+                            className={`ml-1 ${
+                              isCritical
+                                ? 'text-red-500'
+                                : isWarning
+                                  ? 'text-yellow-500'
+                                  : ''
+                            }`}
+                            title={`コンテキストウィンドウ使用率: ${usagePercentage.toFixed(1)}%`}>
+                            ({usagePercentage.toFixed(1)}%)
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 )}
               </div>

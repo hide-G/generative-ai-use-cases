@@ -32,6 +32,7 @@ import {
 import ModelParameters from '../components/ModelParameters';
 import { AcceptedDotExtensions } from '../utils/MediaUtils';
 import { useTranslation } from 'react-i18next';
+import ContextWindowIndicator from '../components/ContextWindowIndicator';
 
 const fileLimit: FileLimit = {
   accept: AcceptedDotExtensions,
@@ -360,6 +361,13 @@ const ChatPage: React.FC = () => {
     }
   }, [showSystemContext, rawMessages, messages]);
 
+  // Calculate total tokens used in the conversation
+  const totalTokens = useMemo(() => {
+    return messages.reduce((sum, message) => {
+      return sum + (message.metadata?.usage?.totalTokens || 0);
+    }, 0);
+  }, [messages]);
+
   const currentSystemContext = useMemo(() => {
     return getCurrentSystemContext();
   }, [getCurrentSystemContext]);
@@ -505,7 +513,17 @@ const ChatPage: React.FC = () => {
         )}
 
         {!isEmpty && !loadingMessages && (
-          <div className="my-2 flex flex-col items-end pr-3 print:hidden">
+          <div className="my-2 flex flex-col items-end gap-2 pr-3 print:hidden">
+            {/* Context Window Indicator */}
+            {totalTokens > 0 && (
+              <div className="w-full max-w-md">
+                <ContextWindowIndicator
+                  modelId={modelId}
+                  usedTokens={totalTokens}
+                />
+              </div>
+            )}
+            
             {chatId && (
               <div>
                 <button
