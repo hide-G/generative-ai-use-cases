@@ -19,6 +19,8 @@ import DialogConfirmDeleteAllChats from '../components/DialogConfirmDeleteAllCha
 const ragEnabled: boolean = import.meta.env.VITE_APP_RAG_ENABLED === 'true';
 const ragKnowledgeBaseEnabled: boolean =
   import.meta.env.VITE_APP_RAG_KNOWLEDGE_BASE_ENABLED === 'true';
+const ragS3VectorEnabled: boolean =
+  import.meta.env.VITE_APP_RAG_S3_VECTOR_ENABLED === 'true';
 const agentEnabled: boolean = import.meta.env.VITE_APP_AGENT_ENABLED === 'true';
 
 const SettingItem = (props: {
@@ -226,6 +228,10 @@ const Setting = () => {
         <SettingItem
           name={t('setting.items.rag_kb_enabled')}
           value={ragKnowledgeBaseEnabled.toString()}
+        />
+        <SettingItem
+          name={t('setting.items.rag_s3_vector_enabled')}
+          value={ragS3VectorEnabled.toString()}
         />
         <SettingItem
           name={t('setting.items.agent_enabled')}

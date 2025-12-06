@@ -38,6 +38,9 @@ export interface GenerativeAiUseCasesStackProps extends StackProps {
   // RAG Knowledge Base
   readonly knowledgeBaseId?: string;
   readonly knowledgeBaseDataSourceBucketName?: string;
+  // RAG S3 Vector
+  readonly s3VectorKnowledgeBaseId?: string;
+  readonly s3VectorDataSourceBucketName?: string;
   // Agent
   readonly agents?: Agent[];
   // Agent Core
@@ -243,6 +246,7 @@ export class GenerativeAiUseCasesStack extends Stack {
       predictStreamFunctionArn: api.predictStreamFunction.functionArn,
       ragEnabled: params.ragEnabled,
       ragKnowledgeBaseEnabled: params.ragKnowledgeBaseEnabled,
+      ragS3VectorEnabled: params.ragS3VectorEnabled,
       agentEnabled: params.agentEnabled || params.agents.length > 0,
       flows: params.flows,
       flowStreamFunctionArn: api.invokeFlowFunction.functionArn,
@@ -364,6 +368,39 @@ export class GenerativeAiUseCasesStack extends Stack {
       }
     }
 
+    // RAG S3 Vector
+    if (params.ragS3VectorEnabled) {
+      const s3VectorKnowledgeBaseId =
+        params.ragS3VectorKnowledgeBaseId || props.s3VectorKnowledgeBaseId;
+      if (s3VectorKnowledgeBaseId) {
+        new RagKnowledgeBase(this, 'RagS3Vector', {
+          modelRegion: params.modelRegion,
+          crossAccountBedrockRoleArn: params.crossAccountBedrockRoleArn,
+          knowledgeBaseId: s3VectorKnowledgeBaseId,
+          userPool: auth.userPool,
+          api: api.api,
+          vpc: props.vpc,
+          securityGroups,
+          resourcePrefix: 'rag-s3-vector',
+        });
+        // Allow downloading files from the File API to the data source Bucket
+        if (
+          props.s3VectorDataSourceBucketName &&
+          api.getFileDownloadSignedUrlFunction.role
+        ) {
+          allowS3AccessWithSourceIpCondition(
+            props.s3VectorDataSourceBucketName,
+            api.getFileDownloadSignedUrlFunction.role,
+            'read',
+            {
+              ipv4: params.allowedIpV4AddressRanges,
+              ipv6: params.allowedIpV6AddressRanges,
+            }
+          );
+        }
+      }
+    }
+
     // UseCaseBuilder - create only if UseCaseBuilder or AgentBuilder is enabled
     let useCaseBuilder: UseCaseBuilder | undefined;
     if (params.useCaseBuilderEnabled || params.agentBuilderEnabled) {
@@ -448,6 +485,10 @@ export class GenerativeAiUseCasesStack extends Stack {
 
     new CfnOutput(this, 'RagKnowledgeBaseEnabled', {
       value: params.ragKnowledgeBaseEnabled.toString(),
+    });
+
+    new CfnOutput(this, 'RagS3VectorEnabled', {
+      value: params.ragS3VectorEnabled.toString(),
     });
 
     new CfnOutput(this, 'AgentEnabled', {

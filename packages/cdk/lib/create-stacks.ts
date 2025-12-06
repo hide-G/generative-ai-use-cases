@@ -5,6 +5,7 @@ import { CloudFrontWafStack } from './cloud-front-waf-stack';
 import { DashboardStack } from './dashboard-stack';
 import { AgentStack } from './agent-stack';
 import { RagKnowledgeBaseStack } from './rag-knowledge-base-stack';
+import { RagS3VectorStack } from './rag-s3-vector-stack';
 import { GuardrailStack } from './guardrail-stack';
 import { AgentCoreStack } from './agent-core-stack';
 import { ProcessedStackInput } from './stack-input';
@@ -142,6 +143,23 @@ export const createStacks = (app: cdk.App, params: ProcessedStackInput) => {
         )
       : null;
 
+  // RAG S3 Vector
+  const ragS3VectorStack =
+    updatedParams.ragS3VectorEnabled && !updatedParams.ragS3VectorKnowledgeBaseId
+      ? new RagS3VectorStack(
+          app,
+          `RagS3VectorStack${updatedParams.env}`,
+          {
+            env: {
+              account: updatedParams.account,
+              region: updatedParams.modelRegion,
+            },
+            params: updatedParams,
+            crossRegionReferences: true,
+          }
+        )
+      : null;
+
   // Agent
   if (updatedParams.crossAccountBedrockRoleArn) {
     if (updatedParams.agentEnabled || updatedParams.searchApiKey) {
@@ -228,6 +246,9 @@ export const createStacks = (app: cdk.App, params: ProcessedStackInput) => {
       knowledgeBaseId: ragKnowledgeBaseStack?.knowledgeBaseId,
       knowledgeBaseDataSourceBucketName:
         ragKnowledgeBaseStack?.dataSourceBucketName,
+      // RAG S3 Vector
+      s3VectorKnowledgeBaseId: ragS3VectorStack?.knowledgeBaseId,
+      s3VectorDataSourceBucketName: ragS3VectorStack?.dataSourceBucketName,
       // Agent
       agents: agentStack?.agents,
       // Agent Core

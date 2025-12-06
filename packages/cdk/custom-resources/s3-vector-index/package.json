@@ -1,0 +1,9 @@
+{
+  "name": "s3-vector-index",
+  "version": "1.0.0",
+  "description": "Custom resource for creating S3 Vector Index",
+  "main": "s3-vector-index.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0"
+  }
+}

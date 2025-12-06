@@ -131,6 +131,15 @@ const baseStackInputSchema = z.object({
   ragKnowledgeBaseBinaryVector: z.boolean().default(false),
   queryDecompositionEnabled: z.boolean().default(false),
   rerankingModelId: z.string().nullish(),
+  // RAG S3 Vector
+  ragS3VectorEnabled: z.boolean().default(false),
+  ragS3VectorKnowledgeBaseId: z.string().nullish(),
+  ragS3VectorBucketName: z.string().nullish(),
+  ragS3VectorIndexName: z.string().default('bedrock-kb-s3-vector-index'),
+  ragS3VectorAdvancedParsing: z.boolean().default(false),
+  ragS3VectorAdvancedParsingModelId: z
+    .string()
+    .default('anthropic.claude-3-sonnet-20240229-v1:0'),
   // Agent
   agentEnabled: z.boolean().default(false),
   searchAgentEnabled: z.boolean().default(false),

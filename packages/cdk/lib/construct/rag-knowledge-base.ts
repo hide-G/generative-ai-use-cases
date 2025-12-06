@@ -21,6 +21,7 @@ export interface RagKnowledgeBaseProps {
   readonly knowledgeBaseId: string;
   readonly userPool: UserPool;
   readonly api: RestApi;
+  readonly resourcePrefix?: string;
 
   // Closed network
   readonly vpc?: IVpc;
@@ -31,7 +32,7 @@ export class RagKnowledgeBase extends Construct {
   constructor(scope: Construct, id: string, props: RagKnowledgeBaseProps) {
     super(scope, id);
 
-    const { modelRegion } = props;
+    const { modelRegion, resourcePrefix = 'rag-knowledge-base' } = props;
 
     const retrieveFunction = new NodejsFunction(this, 'Retrieve', {
       runtime: LAMBDA_RUNTIME_NODEJS,
@@ -73,9 +74,9 @@ export class RagKnowledgeBase extends Construct {
       authorizationType: AuthorizationType.COGNITO,
       authorizer,
     };
-    const ragResource = props.api.root.addResource('rag-knowledge-base');
+    const ragResource = props.api.root.addResource(resourcePrefix);
 
-    // POST: /rag-knowledge-base/retrieve
+    // POST: /{resourcePrefix}/retrieve
     const retrieveResource = ragResource.addResource('retrieve');
     retrieveResource.addMethod(
       'POST',
