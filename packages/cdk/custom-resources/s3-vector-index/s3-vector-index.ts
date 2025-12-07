@@ -98,11 +98,11 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
 
       // Create S3 Vector Index
       const createCommand = new CreateIndexCommand({
-        Bucket: vectorBucketName,
-        IndexName: vectorIndexName,
-        IndexConfiguration: {
-          Dimensions: parseInt(vectorDimension, 10),
-        },
+        vectorBucketName: vectorBucketName,
+        indexName: vectorIndexName,
+        dataType: 'float32',
+        dimension: parseInt(vectorDimension, 10),
+        distanceMetric: 'cosine',
       });
 
       await s3VectorsClient.send(createCommand);
@@ -124,8 +124,8 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
       try {
         // Delete S3 Vector Index
         const deleteCommand = new DeleteIndexCommand({
-          Bucket: vectorBucketName,
-          IndexName: vectorIndexName,
+          vectorBucketName: vectorBucketName,
+          indexName: vectorIndexName,
         });
 
         await s3VectorsClient.send(deleteCommand);
