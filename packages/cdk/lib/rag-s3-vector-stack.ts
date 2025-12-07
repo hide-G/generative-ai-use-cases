@@ -152,9 +152,11 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    // Use CDK auto-generated bucket name (following GenU naming convention)
+    // Generate Vector Bucket name (following GenU naming convention)
     // If ragS3VectorBucketName is specified in cdk.json, use it
-    const vectorBucketName = props.vectorBucketName;
+    // Otherwise, use stack ID to generate a unique name
+    const vectorBucketName =
+      props.vectorBucketName ?? `${id.toLowerCase()}-vector-bucket`;
     const vectorIndexName =
       props.vectorIndexName ?? 'bedrock-kb-s3-vector-index';
 
@@ -171,49 +173,27 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    // Create S3 Vector Bucket
-    // Note: bucketName is optional - CDK will auto-generate if not specified
-    const vectorBucket = new s3.Bucket(this, 'VectorBucket', {
-      ...(vectorBucketName && { bucketName: vectorBucketName }),
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      autoDeleteObjects: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-      objectOwnership: s3.ObjectOwnership.OBJECT_WRITER,
-      enforceSSL: true,
-    });
-
-    // Create S3 Vector Index
+    // Create Vector Bucket and Vector Index using Custom Resource
+    // Note: Vector Bucket is a special bucket type for S3 Vectors, not a regular S3 bucket
     const s3VectorIndex = new S3VectorIndex(this, 'S3VectorIndex', {
-      vectorBucketName: vectorBucket.bucketName,
+      vectorBucketName,
       vectorIndexName,
       vectorDimension: MODEL_VECTOR_MAPPING[embeddingModelId],
     });
-
-    // Ensure Custom Resource waits for S3 bucket creation
-    s3VectorIndex.customResource.node.addDependency(vectorBucket);
 
     // Grant S3 Vectors permissions to Custom Resource Lambda
     s3VectorIndex.customResourceHandler.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         resources: [
-          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucket.bucketName}/index/*`,
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
         ],
-        actions: ['s3vectors:CreateIndex', 's3vectors:DeleteIndex'],
-      })
-    );
-
-    // Grant S3 permissions to Custom Resource Lambda
-    s3VectorIndex.customResourceHandler.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        resources: [vectorBucket.bucketArn, `${vectorBucket.bucketArn}/*`],
         actions: [
-          's3:ListBucket',
-          's3:GetObject',
-          's3:PutObject',
-          's3:DeleteObject',
+          's3vectors:CreateVectorBucket',
+          's3vectors:DeleteVectorBucket',
+          's3vectors:CreateIndex',
+          's3vectors:DeleteIndex',
         ],
       })
     );
@@ -249,12 +229,15 @@ export class RagS3VectorStack extends Stack {
     knowledgeBaseRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        resources: [vectorBucket.bucketArn, `${vectorBucket.bucketArn}/*`],
+        resources: [
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/*`,
+        ],
         actions: [
-          's3:ListBucket',
-          's3:GetObject',
-          's3:PutObject',
-          's3:DeleteObject',
+          's3vectors:ListBucket',
+          's3vectors:GetObject',
+          's3vectors:PutObject',
+          's3vectors:DeleteObject',
         ],
       })
     );
@@ -290,7 +273,7 @@ export class RagS3VectorStack extends Stack {
     knowledgeBase.addPropertyOverride('StorageConfiguration', {
       Type: 'S3_VECTORS',
       S3VectorsConfiguration: {
-        VectorBucketArn: vectorBucket.bucketArn,
+        VectorBucketArn: `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
         IndexName: vectorIndexName,
       },
     });
@@ -335,6 +318,6 @@ export class RagS3VectorStack extends Stack {
 
     this.knowledgeBaseId = knowledgeBase.ref;
     this.dataSourceBucketName = dataSourceBucket.bucketName;
-    this.vectorBucketName = vectorBucket.bucketName;
+    this.vectorBucketName = vectorBucketName;
   }
 }

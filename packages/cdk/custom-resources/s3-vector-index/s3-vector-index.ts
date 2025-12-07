@@ -1,6 +1,8 @@
 import {
   S3VectorsClient,
+  CreateVectorBucketCommand,
   CreateIndexCommand,
+  DeleteVectorBucketCommand,
   DeleteIndexCommand,
 } from '@aws-sdk/client-s3vectors';
 import * as https from 'https';
@@ -93,11 +95,28 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
   try {
     if (RequestType === 'Create' || RequestType === 'Update') {
       console.log(
-        `Creating S3 Vector Index: ${vectorIndexName} in bucket: ${vectorBucketName}`
+        `Creating Vector Bucket: ${vectorBucketName} and Index: ${vectorIndexName}`
       );
 
-      // Create S3 Vector Index
-      const createCommand = new CreateIndexCommand({
+      // Step 1: Create Vector Bucket
+      try {
+        const createBucketCommand = new CreateVectorBucketCommand({
+          vectorBucketName: vectorBucketName,
+        });
+
+        await s3VectorsClient.send(createBucketCommand);
+        console.log(`Vector Bucket ${vectorBucketName} created successfully`);
+      } catch (error: any) {
+        // Ignore error if bucket already exists
+        if (error.name === 'ConflictException') {
+          console.log(`Vector Bucket ${vectorBucketName} already exists`);
+        } else {
+          throw error;
+        }
+      }
+
+      // Step 2: Create S3 Vector Index
+      const createIndexCommand = new CreateIndexCommand({
         vectorBucketName: vectorBucketName,
         indexName: vectorIndexName,
         dataType: 'float32',
@@ -105,7 +124,7 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
         distanceMetric: 'cosine',
       });
 
-      await s3VectorsClient.send(createCommand);
+      await s3VectorsClient.send(createIndexCommand);
 
       console.log('S3 Vector Index created successfully');
 
@@ -118,23 +137,39 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
       await sendResponse(event, 'SUCCESS', data, physicalId);
     } else if (RequestType === 'Delete') {
       console.log(
-        `Deleting S3 Vector Index: ${vectorIndexName} from bucket: ${vectorBucketName}`
+        `Deleting S3 Vector Index: ${vectorIndexName} and Vector Bucket: ${vectorBucketName}`
       );
 
       try {
-        // Delete S3 Vector Index
-        const deleteCommand = new DeleteIndexCommand({
+        // Step 1: Delete S3 Vector Index
+        const deleteIndexCommand = new DeleteIndexCommand({
           vectorBucketName: vectorBucketName,
           indexName: vectorIndexName,
         });
 
-        await s3VectorsClient.send(deleteCommand);
-
+        await s3VectorsClient.send(deleteIndexCommand);
         console.log('S3 Vector Index deleted successfully');
       } catch (error: any) {
         // Ignore error if index does not exist
-        if (error.name === 'NoSuchIndex' || error.name === 'NotFound') {
+        if (error.name === 'NotFoundException') {
           console.log('Vector Index does not exist, skipping deletion');
+        } else {
+          throw error;
+        }
+      }
+
+      try {
+        // Step 2: Delete Vector Bucket
+        const deleteBucketCommand = new DeleteVectorBucketCommand({
+          vectorBucketName: vectorBucketName,
+        });
+
+        await s3VectorsClient.send(deleteBucketCommand);
+        console.log('Vector Bucket deleted successfully');
+      } catch (error: any) {
+        // Ignore error if bucket does not exist
+        if (error.name === 'NotFoundException') {
+          console.log('Vector Bucket does not exist, skipping deletion');
         } else {
           throw error;
         }
