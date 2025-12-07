@@ -1,7 +1,7 @@
 import {
   S3VectorsClient,
-  CreateVectorIndexCommand,
-  DeleteVectorIndexCommand,
+  CreateIndexCommand,
+  DeleteIndexCommand,
 } from '@aws-sdk/client-s3vectors';
 import * as https from 'https';
 import * as url from 'url';
@@ -96,13 +96,12 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
         `Creating S3 Vector Index: ${vectorIndexName} in bucket: ${vectorBucketName}`
       );
 
-      // S3 Vector Index の作成
-      const createCommand = new CreateVectorIndexCommand({
+      // Create S3 Vector Index
+      const createCommand = new CreateIndexCommand({
         Bucket: vectorBucketName,
-        VectorIndexName: vectorIndexName,
-        VectorIndexConfiguration: {
-          Dimension: parseInt(vectorDimension, 10),
-          DistanceMetric: 'COSINE', // Bedrock Knowledge Base では COSINE を使用
+        IndexName: vectorIndexName,
+        IndexConfiguration: {
+          Dimensions: parseInt(vectorDimension, 10),
         },
       });
 
@@ -123,18 +122,18 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
       );
 
       try {
-        // S3 Vector Index の削除
-        const deleteCommand = new DeleteVectorIndexCommand({
+        // Delete S3 Vector Index
+        const deleteCommand = new DeleteIndexCommand({
           Bucket: vectorBucketName,
-          VectorIndexName: vectorIndexName,
+          IndexName: vectorIndexName,
         });
 
         await s3VectorsClient.send(deleteCommand);
 
         console.log('S3 Vector Index deleted successfully');
       } catch (error: any) {
-        // Index が既に存在しない場合はエラーを無視
-        if (error.name === 'NoSuchVectorIndex') {
+        // Ignore error if index does not exist
+        if (error.name === 'NoSuchIndex' || error.name === 'NotFound') {
           console.log('Vector Index does not exist, skipping deletion');
         } else {
           throw error;
