@@ -128,7 +128,6 @@ export class RagS3VectorStack extends Stack {
     super(scope, id, props);
 
     const {
-      env,
       embeddingModelId,
       ragS3VectorAdvancedParsing,
       ragS3VectorAdvancedParsingModelId,
@@ -153,9 +152,9 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    const vectorBucketName =
-      props.vectorBucketName ??
-      `generative-ai-use-cases-s3-vector${env.toLowerCase()}`;
+    // Use CDK auto-generated bucket name (following GenU naming convention)
+    // If ragS3VectorBucketName is specified in cdk.json, use it
+    const vectorBucketName = props.vectorBucketName;
     const vectorIndexName =
       props.vectorIndexName ?? 'bedrock-kb-s3-vector-index';
 
@@ -173,8 +172,9 @@ export class RagS3VectorStack extends Stack {
     }
 
     // Create S3 Vector Bucket
+    // Note: bucketName is optional - CDK will auto-generate if not specified
     const vectorBucket = new s3.Bucket(this, 'VectorBucket', {
-      bucketName: vectorBucketName,
+      ...(vectorBucketName && { bucketName: vectorBucketName }),
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       autoDeleteObjects: true,
@@ -261,7 +261,7 @@ export class RagS3VectorStack extends Stack {
     );
 
     const knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'KnowledgeBase', {
-      name: `${vectorBucketName}-kb`,
+      name: `${id}-kb`,
       roleArn: knowledgeBaseRole.roleArn,
       knowledgeBaseConfiguration: {
         type: 'VECTOR',
