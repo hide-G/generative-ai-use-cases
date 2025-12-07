@@ -270,9 +270,8 @@ export class RagS3VectorStack extends Stack {
       },
       storageConfiguration: {
         type: 'S3_VECTOR',
-        s3VectorConfiguration: {
+        s3Configuration: {
           bucketArn: vectorBucket.bucketArn,
-          vectorIndexName,
         },
       },
     });
