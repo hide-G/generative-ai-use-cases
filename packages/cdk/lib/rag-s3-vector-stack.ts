@@ -190,6 +190,18 @@ export class RagS3VectorStack extends Stack {
       vectorDimension: MODEL_VECTOR_MAPPING[embeddingModelId],
     });
 
+    // Grant S3 Vectors permissions to Custom Resource Lambda
+    s3VectorIndex.customResourceHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        resources: [
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucket.bucketName}/index/*`,
+        ],
+        actions: ['s3vectors:CreateIndex', 's3vectors:DeleteIndex'],
+      })
+    );
+
+    // Grant S3 permissions to Custom Resource Lambda
     s3VectorIndex.customResourceHandler.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
