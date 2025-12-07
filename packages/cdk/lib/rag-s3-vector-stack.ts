@@ -190,6 +190,9 @@ export class RagS3VectorStack extends Stack {
       vectorDimension: MODEL_VECTOR_MAPPING[embeddingModelId],
     });
 
+    // Ensure Custom Resource waits for S3 bucket creation
+    s3VectorIndex.customResource.node.addDependency(vectorBucket);
+
     // Grant S3 Vectors permissions to Custom Resource Lambda
     s3VectorIndex.customResourceHandler.addToRolePolicy(
       new iam.PolicyStatement({
