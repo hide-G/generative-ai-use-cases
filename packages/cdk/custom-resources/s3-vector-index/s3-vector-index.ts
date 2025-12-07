@@ -3,6 +3,8 @@ import {
   CreateVectorIndexCommand,
   DeleteVectorIndexCommand,
 } from '@aws-sdk/client-s3';
+import * as https from 'https';
+import * as url from 'url';
 
 const s3Client = new S3Client({});
 
@@ -12,22 +14,79 @@ interface ResourceProperties {
   vectorDimension: string;
 }
 
+interface CloudFormationEvent {
+  RequestType: 'Create' | 'Update' | 'Delete';
+  ResponseURL: string;
+  StackId: string;
+  RequestId: string;
+  ResourceType: string;
+  LogicalResourceId: string;
+  PhysicalResourceId?: string;
+  ResourceProperties: ResourceProperties;
+}
+
+/**
+ * CloudFormationに応答を送信
+ */
+async function sendResponse(
+  event: CloudFormationEvent,
+  status: 'SUCCESS' | 'FAILED',
+  data?: any,
+  physicalResourceId?: string,
+  reason?: string
+): Promise<void> {
+  const responseBody = JSON.stringify({
+    Status: status,
+    Reason:
+      reason ||
+      `See CloudWatch Log Stream: ${process.env.AWS_LAMBDA_LOG_STREAM_NAME}`,
+    PhysicalResourceId:
+      physicalResourceId || event.PhysicalResourceId || 'NONE',
+    StackId: event.StackId,
+    RequestId: event.RequestId,
+    LogicalResourceId: event.LogicalResourceId,
+    Data: data,
+  });
+
+  console.log('Response body:', responseBody);
+
+  const parsedUrl = url.parse(event.ResponseURL);
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: 443,
+    path: parsedUrl.path,
+    method: 'PUT',
+    headers: {
+      'content-type': '',
+      'content-length': responseBody.length,
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const request = https.request(options, (response) => {
+      console.log('Status code:', response.statusCode);
+      console.log('Status message:', response.statusMessage);
+      resolve();
+    });
+
+    request.on('error', (error) => {
+      console.error('sendResponse Error:', error);
+      reject(error);
+    });
+
+    request.write(responseBody);
+    request.end();
+  });
+}
+
 /**
  * S3 Vector Index を作成・削除するカスタムリソース
  * CloudFormation の Create/Update/Delete イベントに応じて S3 Vector Index を管理
  */
-export const handler = async (event: any): Promise<any> => {
+export const handler = async (event: CloudFormationEvent): Promise<void> => {
   console.log('Event:', JSON.stringify(event, null, 2));
 
-  const {
-    RequestType,
-    ResourceProperties: props,
-    PhysicalResourceId,
-  } = event as {
-    RequestType: 'Create' | 'Update' | 'Delete';
-    ResourceProperties: ResourceProperties;
-    PhysicalResourceId?: string;
-  };
+  const { RequestType, ResourceProperties: props, PhysicalResourceId } = event;
 
   const { vectorBucketName, vectorIndexName, vectorDimension } = props;
 
@@ -51,13 +110,13 @@ export const handler = async (event: any): Promise<any> => {
 
       console.log('S3 Vector Index created successfully');
 
-      return {
-        PhysicalResourceId: `${vectorBucketName}/${vectorIndexName}`,
-        Data: {
-          VectorBucketName: vectorBucketName,
-          VectorIndexName: vectorIndexName,
-        },
+      const physicalId = `${vectorBucketName}/${vectorIndexName}`;
+      const data = {
+        VectorBucketName: vectorBucketName,
+        VectorIndexName: vectorIndexName,
       };
+
+      await sendResponse(event, 'SUCCESS', data, physicalId);
     } else if (RequestType === 'Delete') {
       console.log(
         `Deleting S3 Vector Index: ${vectorIndexName} from bucket: ${vectorBucketName}`
@@ -82,12 +141,16 @@ export const handler = async (event: any): Promise<any> => {
         }
       }
 
-      return {
-        PhysicalResourceId: PhysicalResourceId || 'deleted',
-      };
+      await sendResponse(event, 'SUCCESS', {}, PhysicalResourceId || 'deleted');
     }
   } catch (error: any) {
     console.error('Error:', error);
-    throw error;
+    await sendResponse(
+      event,
+      'FAILED',
+      {},
+      PhysicalResourceId,
+      error.message || 'Unknown error'
+    );
   }
 };

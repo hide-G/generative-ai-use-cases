@@ -11,8 +11,9 @@ import { LAMBDA_RUNTIME_NODEJS } from '../consts';
 
 const UUID = 'A7F3E8D2-9B4C-4E1A-8F6D-2C5B7A9E3D1F';
 
-// Bedrock でサポートされている埋め込みモデル
-// Dimension は Custom resource の prop として渡されるが、型が自動変換される問題があるため、number ではなく string で設定
+// Embedding models supported by Bedrock
+// Dimension is passed as a prop to Custom resource, but there's an issue with automatic type conversion,
+// so it's set as string instead of number
 // https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1037
 const MODEL_VECTOR_MAPPING: { [key: string]: string } = {
   'amazon.titan-embed-text-v1': '1536',
@@ -21,8 +22,8 @@ const MODEL_VECTOR_MAPPING: { [key: string]: string } = {
   'cohere.embed-english-v3': '1024',
 };
 
-// Advanced Parsing 用のプロンプト
-// PDF ファイルに埋め込まれた画像、グラフ、表を読み取る機能のプロンプト
+// Prompt for Advanced Parsing
+// Prompt for reading images, graphs, and tables embedded in PDF files
 // https://docs.aws.amazon.com/bedrock/latest/userguide/kb-chunking-parsing.html#kb-advanced-parsing
 const PARSING_PROMPT = `Write the text from the image, graph, and table content in the document, and output it in Markdown syntax, not a code block. Follow the following steps:
 
@@ -171,7 +172,7 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    // S3 Vector Bucket の作成
+    // Create S3 Vector Bucket
     const vectorBucket = new s3.Bucket(this, 'VectorBucket', {
       bucketName: vectorBucketName,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -182,7 +183,7 @@ export class RagS3VectorStack extends Stack {
       enforceSSL: true,
     });
 
-    // S3 Vector Index の作成
+    // Create S3 Vector Index
     const s3VectorIndex = new S3VectorIndex(this, 'S3VectorIndex', {
       vectorBucketName: vectorBucket.bucketName,
       vectorIndexName,
@@ -270,7 +271,7 @@ export class RagS3VectorStack extends Stack {
       },
     });
 
-    // CloudFormationの生のプロパティを直接設定（CDK型定義が2025年12月2日GA直後でまだ更新されていないため）
+    // Set CloudFormation raw properties directly (CDK type definitions not yet updated after GA on Dec 2, 2025)
     knowledgeBase.addPropertyOverride('StorageConfiguration', {
       Type: 'S3_VECTORS',
       S3VectorsConfiguration: {
@@ -290,7 +291,7 @@ export class RagS3VectorStack extends Stack {
       vectorIngestionConfiguration: {
         ...(ragS3VectorAdvancedParsing
           ? {
-              // Advanced Parsing が有効な場合のみ設定
+              // Set only when Advanced Parsing is enabled
               parsingConfiguration: {
                 parsingStrategy: 'BEDROCK_FOUNDATION_MODEL',
                 bedrockFoundationModelConfiguration: {
