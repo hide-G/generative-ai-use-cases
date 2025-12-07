@@ -268,11 +268,14 @@ export class RagS3VectorStack extends Stack {
           embeddingModelArn: `arn:aws:bedrock:${this.region}::foundation-model/${embeddingModelId}`,
         },
       },
-      storageConfiguration: {
-        type: 'S3_VECTOR',
-        s3Configuration: {
-          bucketArn: vectorBucket.bucketArn,
-        },
+    });
+
+    // CloudFormationの生のプロパティを直接設定（CDK型定義が2025年12月2日GA直後でまだ更新されていないため）
+    knowledgeBase.addPropertyOverride('StorageConfiguration', {
+      Type: 'S3_VECTORS',
+      S3VectorsConfiguration: {
+        VectorBucketArn: vectorBucket.bucketArn,
+        IndexName: vectorIndexName,
       },
     });
 
