@@ -1,12 +1,12 @@
 import {
-  S3Client,
+  S3VectorsClient,
   CreateVectorIndexCommand,
   DeleteVectorIndexCommand,
-} from '@aws-sdk/client-s3';
+} from '@aws-sdk/client-s3vectors';
 import * as https from 'https';
 import * as url from 'url';
 
-const s3Client = new S3Client({});
+const s3VectorsClient = new S3VectorsClient({});
 
 interface ResourceProperties {
   vectorBucketName: string;
@@ -106,7 +106,7 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
         },
       });
 
-      await s3Client.send(createCommand);
+      await s3VectorsClient.send(createCommand);
 
       console.log('S3 Vector Index created successfully');
 
@@ -129,7 +129,7 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
           VectorIndexName: vectorIndexName,
         });
 
-        await s3Client.send(deleteCommand);
+        await s3VectorsClient.send(deleteCommand);
 
         console.log('S3 Vector Index deleted successfully');
       } catch (error: any) {
