@@ -8,7 +8,11 @@ import {
 import * as https from 'https';
 import * as url from 'url';
 
-const s3VectorsClient = new S3VectorsClient({});
+// Initialize S3 Vectors client with explicit region
+// AWS SDK v3 requires explicit region configuration for S3 Vectors
+const s3VectorsClient = new S3VectorsClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+});
 
 interface ResourceProperties {
   vectorBucketName: string;
@@ -115,18 +119,36 @@ export const handler = async (event: CloudFormationEvent): Promise<void> => {
         }
       }
 
-      // Step 2: Create S3 Vector Index
-      const createIndexCommand = new CreateIndexCommand({
-        vectorBucketName: vectorBucketName,
-        indexName: vectorIndexName,
-        dataType: 'float32',
-        dimension: parseInt(vectorDimension, 10),
-        distanceMetric: 'cosine',
-      });
+      // Step 2: Create S3 Vector Index (with retry logic)
+      // Vector Bucket creation may take a few seconds to propagate
+      let retries = 5;
+      let lastError;
 
-      await s3VectorsClient.send(createIndexCommand);
+      for (let i = 0; i < retries; i++) {
+        try {
+          const createIndexCommand = new CreateIndexCommand({
+            vectorBucketName: vectorBucketName,
+            indexName: vectorIndexName,
+            dataType: 'float32',
+            dimension: parseInt(vectorDimension, 10),
+            distanceMetric: 'cosine',
+          });
 
-      console.log('S3 Vector Index created successfully');
+          await s3VectorsClient.send(createIndexCommand);
+          console.log('S3 Vector Index created successfully');
+          break; // Success, exit loop
+        } catch (error: any) {
+          lastError = error;
+          if (error.name === 'NotFoundException' && i < retries - 1) {
+            console.log(
+              `Vector Bucket not found, retrying in 5 seconds... (${i + 1}/${retries})`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          } else {
+            throw error;
+          }
+        }
+      }
 
       const physicalId = `${vectorBucketName}/${vectorIndexName}`;
       const data = {
