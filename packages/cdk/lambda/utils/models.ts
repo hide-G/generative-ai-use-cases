@@ -636,8 +636,11 @@ const extractConverseOutput = (
   if (output.output && output.output.message && output.output.message.content) {
     // output.message.content is an array, but usually only one element is returned, so join is not necessary.
     // However, to implement on the safe side, join is implemented so that it works even if an array with multiple elements comes.
+    // Filter out reasoningContent blocks to get only text blocks (fix for Issue #1365)
     const responseText = output.output.message.content
+      .filter((block) => !block.reasoningContent)
       .map((block) => block.text)
+      .filter((text) => text !== undefined)
       .join('\n');
     const reasoningText = output.output.message.content
       .map((block) => {
@@ -646,6 +649,7 @@ const extractConverseOutput = (
         }
         return '';
       })
+      .filter((text) => text !== undefined && text !== '')
       .join('\n');
     const metadata = {
       usage: output.usage,
