@@ -50,7 +50,10 @@ export const getParams = (app: cdk.App): ProcessedStackInput => {
     models: (string | ModelConfiguration)[],
     defaultRegion: string
   ): ModelConfiguration[] => {
-    return models.map((model) => {
+    console.log('DEBUG: Input models:', JSON.stringify(models, null, 2));
+    console.log('DEBUG: Default region:', defaultRegion);
+
+    const result = models.map((model) => {
       if (typeof model === 'string') {
         // Extract region from model ID if it has a region prefix (e.g., "global.", "us.", "eu.")
         const regionMatch = model.match(/^(global|us|eu|jp|ap)\./);
@@ -59,10 +62,15 @@ export const getParams = (app: cdk.App): ProcessedStackInput => {
         // Use extracted region for global models, otherwise use defaultRegion
         const region = extractedRegion === 'global' ? 'global' : defaultRegion;
 
+        console.log(`DEBUG: Processing model ${model} -> region: ${region}`);
         return { modelId: model, region: region };
       }
+      console.log('DEBUG: Model already configured:', model);
       return model;
     });
+
+    console.log('DEBUG: Final result:', JSON.stringify(result, null, 2));
+    return result;
   };
 
   return {
