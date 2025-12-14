@@ -1,25 +1,18 @@
-import { Stack, StackProps, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, RemovalPolicy, CfnResource } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3Deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { ProcessedStackInput } from './stack-input';
-import { LAMBDA_RUNTIME_NODEJS } from '../consts';
-
-const UUID = 'A7F3E8D2-9B4C-4E1A-8F6D-2C5B7A9E3D1F';
 
 // Embedding models supported by Bedrock
-// Dimension is passed as a prop to Custom resource, but there's an issue with automatic type conversion,
-// so it's set as string instead of number
-// https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1037
-const MODEL_VECTOR_MAPPING: { [key: string]: string } = {
-  'amazon.titan-embed-text-v1': '1536',
-  'amazon.titan-embed-text-v2:0': '1024',
-  'cohere.embed-multilingual-v3': '1024',
-  'cohere.embed-english-v3': '1024',
+const MODEL_VECTOR_MAPPING: { [key: string]: number } = {
+  'amazon.titan-embed-text-v1': 1536,
+  'amazon.titan-embed-text-v2:0': 1024,
+  'cohere.embed-multilingual-v3': 1024,
+  'cohere.embed-english-v3': 1024,
 };
 
 // Prompt for Advanced Parsing
@@ -76,43 +69,6 @@ Financial Activity	6,291	9,718`;
 
 const EMBEDDING_MODELS = Object.keys(MODEL_VECTOR_MAPPING);
 
-interface S3VectorIndexProps {
-  readonly vectorBucketName: string;
-  readonly vectorIndexName: string;
-  readonly vectorDimension: string;
-}
-
-class S3VectorIndex extends Construct {
-  public readonly customResourceHandler: lambda.IFunction;
-  public readonly customResource: cdk.CustomResource;
-
-  constructor(scope: Construct, id: string, props: S3VectorIndexProps) {
-    super(scope, id);
-
-    const customResourceHandler = new lambda.SingletonFunction(
-      this,
-      'S3VectorIndex',
-      {
-        runtime: LAMBDA_RUNTIME_NODEJS,
-        code: lambda.Code.fromAsset('custom-resources/s3-vector-index'),
-        handler: 's3-vector-index.handler',
-        uuid: UUID,
-        lambdaPurpose: 'S3VectorIndex',
-        timeout: cdk.Duration.minutes(15),
-      }
-    );
-
-    const customResource = new cdk.CustomResource(this, 'CustomResource', {
-      serviceToken: customResourceHandler.functionArn,
-      resourceType: 'Custom::S3VectorIndex',
-      properties: props,
-    });
-
-    this.customResourceHandler = customResourceHandler;
-    this.customResource = customResource;
-  }
-}
-
 export interface RagS3VectorStackProps extends StackProps {
   params: ProcessedStackInput;
   vectorBucketName?: string;
@@ -152,11 +108,7 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    // Generate Vector Bucket name (following GenU naming convention)
-    // If ragS3VectorBucketName is specified in cdk.json, use it
-    // Otherwise, use stack ID to generate a unique name
-    const vectorBucketName =
-      props.vectorBucketName ?? `${id.toLowerCase()}-vector-bucket`;
+    // Vector Index name (following GenU naming convention)
     const vectorIndexName =
       props.vectorIndexName ?? 'bedrock-kb-s3-vector-index';
 
@@ -173,30 +125,36 @@ export class RagS3VectorStack extends Stack {
       );
     }
 
-    // Create Vector Bucket and Vector Index using Custom Resource
-    // Note: Vector Bucket is a special bucket type for S3 Vectors, not a regular S3 bucket
-    const s3VectorIndex = new S3VectorIndex(this, 'S3VectorIndex', {
-      vectorBucketName,
-      vectorIndexName,
-      vectorDimension: MODEL_VECTOR_MAPPING[embeddingModelId],
+    // Create Vector Bucket using CloudFormation native resource (AWS::S3Vectors::VectorBucket)
+    // This eliminates the need for Custom Resource and is more reliable
+    const vectorBucket = new CfnResource(this, 'VectorBucket', {
+      type: 'AWS::S3Vectors::VectorBucket',
+      properties: {
+        // Let CloudFormation generate a unique name if not specified
+        ...(props.vectorBucketName && {
+          VectorBucketName: props.vectorBucketName,
+        }),
+      },
     });
+    vectorBucket.applyRemovalPolicy(RemovalPolicy.DESTROY);
 
-    // Grant S3 Vectors permissions to Custom Resource Lambda
-    s3VectorIndex.customResourceHandler.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        resources: [
-          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
-          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
-        ],
-        actions: [
-          's3vectors:CreateVectorBucket',
-          's3vectors:DeleteVectorBucket',
-          's3vectors:CreateIndex',
-          's3vectors:DeleteIndex',
-        ],
-      })
-    );
+    // Get Vector Bucket ARN from CloudFormation attribute
+    const vectorBucketArn = vectorBucket.getAtt('VectorBucketArn').toString();
+    const vectorBucketNameRef = vectorBucket.ref;
+
+    // Create Vector Index using CloudFormation native resource (AWS::S3Vectors::Index)
+    const vectorIndex = new CfnResource(this, 'VectorIndex', {
+      type: 'AWS::S3Vectors::Index',
+      properties: {
+        VectorBucketArn: vectorBucketArn,
+        IndexName: vectorIndexName,
+        DataType: 'float32',
+        Dimension: MODEL_VECTOR_MAPPING[embeddingModelId],
+        DistanceMetric: 'cosine',
+      },
+    });
+    vectorIndex.applyRemovalPolicy(RemovalPolicy.DESTROY);
+    vectorIndex.addDependency(vectorBucket);
 
     const accessLogsBucket = new s3.Bucket(this, 'DataSourceAccessLogsBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -226,18 +184,20 @@ export class RagS3VectorStack extends Stack {
       })
     );
 
+    // Grant S3 Vectors permissions to Knowledge Base role
     knowledgeBaseRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        resources: [
-          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
-          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/*`,
-        ],
+        resources: [vectorBucketArn, `${vectorBucketArn}/*`],
         actions: [
           's3vectors:ListBucket',
           's3vectors:GetObject',
           's3vectors:PutObject',
           's3vectors:DeleteObject',
+          's3vectors:QueryVectors',
+          's3vectors:PutVectors',
+          's3vectors:GetVectors',
+          's3vectors:DeleteVectors',
         ],
       })
     );
@@ -258,6 +218,7 @@ export class RagS3VectorStack extends Stack {
       })
     );
 
+    // Create Knowledge Base with S3 Vectors storage configuration
     const knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'KnowledgeBase', {
       name: `${id}-kb`,
       roleArn: knowledgeBaseRole.roleArn,
@@ -267,16 +228,23 @@ export class RagS3VectorStack extends Stack {
           embeddingModelArn: `arn:aws:bedrock:${this.region}::foundation-model/${embeddingModelId}`,
         },
       },
-    });
-
-    // Set CloudFormation raw properties directly (CDK type definitions not yet updated after GA on Dec 2, 2025)
-    knowledgeBase.addPropertyOverride('StorageConfiguration', {
-      Type: 'S3_VECTORS',
-      S3VectorsConfiguration: {
-        VectorBucketArn: `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
-        IndexName: vectorIndexName,
+      storageConfiguration: {
+        type: 'S3_VECTORS',
+        // Use addPropertyOverride for S3VectorsConfiguration since CDK types may not be updated
       },
     });
+
+    // Set S3VectorsConfiguration using addPropertyOverride
+    // This is necessary because CDK type definitions may not include the latest S3 Vectors properties
+    knowledgeBase.addPropertyOverride(
+      'StorageConfiguration.S3VectorsConfiguration',
+      {
+        VectorBucketArn: vectorBucketArn,
+        IndexName: vectorIndexName,
+      }
+    );
+
+    knowledgeBase.addDependency(vectorIndex);
 
     new bedrock.CfnDataSource(this, 'DataSource', {
       dataSourceConfiguration: {
@@ -306,8 +274,6 @@ export class RagS3VectorStack extends Stack {
       name: 's3-data-source',
     });
 
-    knowledgeBase.node.addDependency(s3VectorIndex.customResource);
-
     new s3Deploy.BucketDeployment(this, 'DeployDocs', {
       sources: [s3Deploy.Source.asset('./rag-docs')],
       destinationBucket: dataSourceBucket,
@@ -316,8 +282,30 @@ export class RagS3VectorStack extends Stack {
       memoryLimit: 1024,
     });
 
+    // Output values
     this.knowledgeBaseId = knowledgeBase.ref;
     this.dataSourceBucketName = dataSourceBucket.bucketName;
-    this.vectorBucketName = vectorBucketName;
+    this.vectorBucketName = vectorBucketNameRef;
+
+    // CloudFormation Outputs
+    new cdk.CfnOutput(this, 'VectorBucketArn', {
+      value: vectorBucketArn,
+      description: 'ARN of the S3 Vector Bucket',
+    });
+
+    new cdk.CfnOutput(this, 'VectorIndexArn', {
+      value: vectorIndex.getAtt('IndexArn').toString(),
+      description: 'ARN of the S3 Vector Index',
+    });
+
+    new cdk.CfnOutput(this, 'KnowledgeBaseIdOutput', {
+      value: knowledgeBase.ref,
+      description: 'ID of the Bedrock Knowledge Base',
+    });
+
+    new cdk.CfnOutput(this, 'DataSourceBucketNameOutput', {
+      value: dataSourceBucket.bucketName,
+      description: 'Name of the Data Source S3 Bucket',
+    });
   }
 }
