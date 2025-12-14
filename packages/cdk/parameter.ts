@@ -50,11 +50,19 @@ export const getParams = (app: cdk.App): ProcessedStackInput => {
     models: (string | ModelConfiguration)[],
     defaultRegion: string
   ): ModelConfiguration[] => {
-    return models.map((model) =>
-      typeof model === 'string'
-        ? { modelId: model, region: defaultRegion }
-        : model
-    );
+    return models.map((model) => {
+      if (typeof model === 'string') {
+        // Extract region from model ID if it has a region prefix (e.g., "global.", "us.", "eu.")
+        const regionMatch = model.match(/^(global|us|eu|jp|ap)\./);
+        const extractedRegion = regionMatch ? regionMatch[1] : null;
+
+        // Use extracted region for global models, otherwise use defaultRegion
+        const region = extractedRegion === 'global' ? 'global' : defaultRegion;
+
+        return { modelId: model, region: region };
+      }
+      return model;
+    });
   };
 
   return {
